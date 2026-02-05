@@ -1,79 +1,81 @@
 import requests
 import datetime
-import os  # 新增：引入系统库
+import os
 
-# ================= 配置区域 =================
-# 1. 从环境变量获取 Token (这样更安全)
-# 如果本地运行报错，可以在这里填入默认值，或者在电脑环境变量里设置
-try:
-    USER_TOKEN = os.environ['PUSHPLUS_TOKEN']
-except KeyError:
-    USER_TOKEN = "如果你在本地测试，可以暂时填这里，但在GitHub上不要填"
+# ================= 商业化配置区域 =================
 
-# 2. 设置目标汇率 (当汇率低于这个数字时提醒)
-TARGET_RATE = 0.048 
+# 1. 目标汇率 (低于此值发送全员通知)
+TARGET_RATE = 0.048
 
-# ================= 核心逻辑 =================
+# 2. PushPlus 群组编码 (刚才在后台填写的那个英文名)
+PUSH_TOPIC = "jpy_alert_vip" 
 
-def get_exchange_rate():
-    """获取 JPY 对 CNY 的实时汇率"""
-    # 这是一个免费公开的 API，不需要 Key
+# 3. 这里的 Token 从环境变量读取，不要修改
+# 只有你自己(管理员)的 Token 才有权限向群组发消息
+ADMIN_TOKEN = os.environ.get('PUSHPLUS_TOKEN')
+
+# =================================================
+
+def get_current_rate():
+    """获取实时汇率"""
     url = "https://api.exchangerate-api.com/v4/latest/JPY"
-    
     try:
-        # 发送请求
-        response = requests.get(url)
-        # 检查网络连接是否正常 (状态码 200)
-        if response.status_code == 200:
-            data = response.json()
-            # 获取 CNY 的汇率
-            current_rate = data['rates']['CNY']
-            return current_rate
-        else:
-            print("❌ 获取汇率失败，接口状态码:", response.status_code)
-            return None
+        resp = requests.get(url, timeout=10)
+        if resp.status_code == 200:
+            return resp.json()['rates']['CNY']
     except Exception as e:
-        print(f"❌ 发生错误: {e}")
-        return None
+        print(f"Error getting rate: {e}")
+    return None
 
-def send_pushplus_notification(rate):
-    """发送微信通知"""
+def send_broadcast(rate):
+    """向群组发送广播通知"""
+    if not ADMIN_TOKEN:
+        print("❌ 错误：未配置管理员 Token，无法发送通知")
+        return
+
     url = "http://www.pushplus.plus/send"
+    current_time = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     
-    # 获取当前时间
-    now_time = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-    
-    # 构造通知内容
-    title = "汇率提醒：日元已跌破目标价！"
-    content = f"当前时间：{now_time}<br>当前汇率：{rate}<br>设定目标：{TARGET_RATE}<br>快去查看！"
-    
-    # 发送请求的参数
-    params = {
-        "token": USER_TOKEN,
-        "title": title,
-        "content": content
-    }
-    
-    try:
-        requests.get(url, params=params)
-        print("✅ 微信通知已发送！")
-    except Exception as e:
-        print(f"❌ 发送通知失败: {e}")
+    # 商业化文案：看起来专业一点
+    title = f"📉 汇率触达提醒：{rate}"
+    content = (
+        f"<b>【日元汇率监控服务】</b><br>"
+        f"------------------------<br>"
+        f"当前时间：{current_time}<br>"
+        f"<b>最新汇率：{rate}</b><br>"
+        f"设定阈值：{TARGET_RATE}<br>"
+        f"------------------------<br>"
+        f"<i>建议：已跌破设定值，请关注买入时机。</i><br>"
+        f"<a href='https://finance.sina.com.cn/money/forex/hq/JPYCNY.shtml'>点击查看新浪财经详情</a>"
+    )
 
-# ================= 主程序入口 =================
+    params = {
+        "token": ADMIN_TOKEN,
+        "title": title,
+        "content": content,
+        "topic": PUSH_TOPIC,  # 关键：发送给群组
+        "template": "html"    # 使用 HTML 格式让消息更好看
+    }
+
+    try:
+        res = requests.get(url, params=params)
+        print(f"✅ 广播发送结果: {res.text}")
+    except Exception as e:
+        print(f"❌ 广播发送失败: {e}")
 
 if __name__ == "__main__":
-    print("正在查询汇率...")
+    print(f"--- 任务开始: {datetime.datetime.now()} ---")
     
-    # 1. 获取汇率
-    rate = get_exchange_rate()
+    rate = get_current_rate()
     
-    if rate is not None:
-        print(f"当前 JPY/CNY 汇率: {rate}")
-        
-        # 2. 判断是否满足条件
+    if rate:
+        print(f"📊 当前汇率: {rate}")
         if rate <= TARGET_RATE:
-            print(f"⚡ 汇率 ({rate}) 低于或等于目标值 ({TARGET_RATE})，准备发送通知...")
-            send_pushplus_notification(rate)
+            print("⚡ 触发阈值，正在发送全员通知...")
+            send_broadcast(rate)
         else:
-            print(f"汇率 ({rate}) 高于目标值 ({TARGET_RATE})，无需通知。")
+            print(f"💤 未达到阈值 ({TARGET_RATE})，本轮静默。")
+    else:
+        print("❌ 获取汇率失败，请检查网络或API。")
+        
+    print("--- 任务结束 ---")
