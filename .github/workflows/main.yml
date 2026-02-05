@@ -1,40 +1,35 @@
-name: JPY Exchange Rate Monitor
+name: JPY Commercial Monitor
 
 on:
-  # 1. 定时触发
+  # 1. 自动运行：每小时的第 30 分钟执行一次 (例如 9:30, 10:30...)
   schedule:
-    # 这里的语法是 cron 表达式
-    # '0 * * * *' 代表每小时的第 0 分钟运行一次 (即每小时运行一次)
-    # 注意：GitHub Actions 使用 UTC 时间，比北京时间慢8小时，但这不影响每小时执行的频率
-    - cron: '0 * * * *'
+    - cron: '30 * * * *'
   
-  # 2. 手动触发 (方便你测试)
+  # 2. 手动开关：方便你随时测试或临时加更
   workflow_dispatch:
 
 jobs:
-  build:
+  monitor-job:
     runs-on: ubuntu-latest
+    
+    # 设置时区为北京时间，方便看日志
+    env:
+      TZ: Asia/Shanghai
 
     steps:
-    # 第一步：下载你的代码仓库
     - name: Checkout code
-      uses: actions/checkout@v2
+      uses: actions/checkout@v3
 
-    # 第二步：安装 Python 环境
     - name: Set up Python
-      uses: actions/setup-python@v2
+      uses: actions/setup-python@v4
       with:
         python-version: '3.9'
 
-    # 第三步：安装依赖库 requests
-    - name: Install dependencies
-      run: |
-        python -m pip install --upgrade pip
-        pip install requests
+    - name: Install Dependencies
+      run: pip install requests
 
-    # 第四步：运行脚本
-    - name: Run monitor script
+    - name: Run Monitor Script
       env:
-        # 这里把刚才设置的 Secret 传递给 Python 脚本的环境变量
+        # 将 GitHub 后台的安全密钥传递给 Python 脚本
         PUSHPLUS_TOKEN: ${{ secrets.PUSHPLUS_TOKEN }}
-      run: python monitor.py
+      run: python monitor_pro.py
