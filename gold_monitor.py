@@ -2,6 +2,7 @@ import requests
 import re
 import os
 import datetime
+import sys
 
 # ================= 商业化双向预警配置 =================
 PUSH_TOPIC = "gold_pro_trading" 
@@ -120,3 +121,4 @@ if __name__ == "__main__":
     # 4. 正常执行逻辑
     res = analyze_market(current, high, low, op)
     send_dual_alert(current, high, low, res)
+
