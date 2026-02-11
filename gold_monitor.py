@@ -12,6 +12,27 @@ BUY_LEVELS = [-1.0, -2.5, -4.0]  # 跌破最高点多少%提醒买入
 SELL_LEVELS = [1.5, 3.0, 5.0]    # 涨过最低点多少%提醒卖出
 # =====================================================
 
+def is_within_trade_session():
+    """精准判断当前是否在上海金交易时段内"""
+    now = datetime.datetime.now()
+    # 转换成 HHMM 格式的数字，方便比较 (例如 09:30 变成 930)
+    current_time = now.hour * 100 + now.minute
+    
+    # 周六、周日全天不跑 (周六凌晨的夜盘已在 YAML 逻辑中处理)
+    if now.weekday() >= 5:
+        return False
+
+    # 上海金精准交易时间段 (北京时间):
+    # 1. 上午：09:00 - 11:35 (多给5分钟收尾)
+    # 2. 下午：13:30 - 15:35
+    # 3. 夜盘：20:00 - 02:35 (跨天)
+    
+    is_morning = 900 <= current_time <= 1135
+    is_afternoon = 1330 <= current_time <= 1535
+    is_night = current_time >= 2000 or current_time <= 235
+    
+    return is_morning or is_afternoon or is_night
+
 def get_gold_full_data():
     """从新浪获取：当前价[1], 开盘价[2], 最高价[3], 最低价[4]"""
     url = "https://hq.sinajs.cn/list=goldsse"
@@ -83,9 +104,19 @@ def send_dual_alert(current, high, low, analysis):
     print(f"通知已发送：{analysis['type']} Level {analysis['level']}")
 
 if __name__ == "__main__":
+    # 1. 首先检查是否在交易时段
+    if not is_within_trade_session():
+        print(f"⏰ 当前时间 {datetime.datetime.now().strftime('%H:%M')} 为休市时段，程序静默退出。")
+        sys.exit(0)
+
+    # 2. 如果在交易时段，尝试获取数据
     current, high, low, op = get_gold_full_data()
-    if current:
-        res = analyze_market(current, high, low, op)
-        send_dual_alert(current, high, low, res)
-    else:
-        print("数据抓取跳过...")
+    
+    # 3. 再次兜底：如果接口返回空 (比如法定节假日)，也退出
+    if current is None or current == 0:
+        print("📢 接口未返回数据，今日可能为法定节假日休市。")
+        sys.exit(0)
+
+    # 4. 正常执行逻辑
+    res = analyze_market(current, high, low, op)
+    send_dual_alert(current, high, low, res)
