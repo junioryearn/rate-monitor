@@ -37,4 +37,4 @@ jobs:
         env:
           # 必须在 Repository Secrets 中配置好 PUSHPLUS_TOKEN
           PUSHPLUS_TOKEN: ${{ secrets.PUSHPLUS_TOKEN }}
-        run: python gold_dual_monitor.py
+        run: python gold_monitor.py
