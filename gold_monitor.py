@@ -93,51 +93,73 @@ def analyze_market(current, high, low, op):
 
     return analysis
 
-def send_dual_alert(current, high, low, res):
-    """PushPlus HTML 微信预警"""
-    if not res["type"]: return
-    if not ADMIN_TOKEN:
-        print("⚠️ 未检测到 Token，跳过消息发送")
-        return
+def send_dual_alert(current, high, low, res, msg_mode="ALERT"):
+    """
+    msg_mode: 
+    - ALERT: 触发预警 (红/绿)
+    - PULSE: 定时快报 (蓝色)
+    - SUMMARY: 收盘总结 (金色)
+    """
+    if msg_mode == "ALERT" and not res["type"]: return # 非预警模式且无触发则退出
 
-    direction = "📉 低吸信号" if res["type"] == "买入" else "📈 高抛信号"
-    theme_color = "#ff4d4f" if res["type"] == "卖出" else "#52c41a"
-    stars = "⭐" * res["level"]
+    # 颜色配置
+    colors = {"ALERT_BUY": "#52c41a", "ALERT_SELL": "#ff4d4f", "PULSE": "#1890ff", "SUMMARY": "#faad14"}
     
-    title = f"{direction} (等级 {res['level']}): {current}元"
+    if msg_mode == "ALERT":
+        mode_name = "📉 低吸信号" if res["type"] == "买入" else "📈 高抛信号"
+        theme_color = colors["ALERT_BUY"] if res["type"] == "买入" else colors["ALERT_SELL"]
+        icon = "⭐" * res["level"]
+    elif msg_mode == "PULSE":
+        mode_name = "⏲️ 准点快报"
+        theme_color = colors["PULSE"]
+        icon = "🔔"
+    else:
+        mode_name = "📊 收盘总结"
+        theme_color = colors["SUMMARY"]
+        icon = "🏁"
+
+    title = f"{mode_name}: {current}元"
     content = f"""
-    <div style="border: 2px solid {theme_color}; padding: 15px; border-radius: 10px;">
-        <h2 style="color: {theme_color};">{direction} {stars}</h2>
-        <p><b>当前价格：{current} 元/克</b></p>
-        <hr/>
-        <p>今日最高：{high} | 今日最低：{low} | 日内涨跌：{res['day_change']}%</p>
-        <div style="background: {theme_color}11; padding: 10px; border-left: 5px solid {theme_color};">
-            <b>触发变动：{res['rate']}%</b><br>
-            <b>操作建议：{res['advice']}</b>
+    <div style="border: 2px solid {theme_color}; padding: 15px; border-radius: 10px; font-family: sans-serif;">
+        <h2 style="color: {theme_color}; margin: 0 0 10px 0;">{mode_name} {icon}</h2>
+        <p style="font-size: 20px; margin: 5px 0;"><b>{current} 元/克</b></p>
+        <div style="background: #f5f5f5; padding: 10px; border-radius: 5px; font-size: 14px;">
+            开盘: {low} | 最高: {high}<br>
+            <b>日内涨跌: {'+' if res['day_change']>0 else ''}{res['day_change']}%</b>
         </div>
+        {f'<div style="margin-top:10px; padding:8px; background:{theme_color}11; border-left:4px solid {theme_color};"><b>建议: {res["advice"]} ({res["rate"]}%)</b></div>' if res['type'] else ''}
+        <p style="font-size: 12px; color: #999; margin-top: 10px;">北京时间: {get_beijing_time().strftime('%H:%M:%S')}</p>
     </div>
     """
+    requests.get("http://www.pushplus.plus/send", params={
+        "token": ADMIN_TOKEN, "title": title, "content": content, "template": "html", "topic": PUSH_TOPIC
+    })
 
-    params = {"token": ADMIN_TOKEN, "title": title, "content": content, "topic": PUSH_TOPIC, "template": "html"}
-    try:
-        requests.get("http://www.pushplus.plus/send", params=params)
-        print(f"✅ 预警已发送：{res['type']} 等级 {res['level']}")
-    except Exception as e:
-        print(f"❌ 发送失败: {e}")
 
 if __name__ == "__main__":
-    now_bt = get_beijing_time()
-    print(f"{'='*30}\n🚀 监控启动: {now_bt.strftime('%Y-%m-%d %H:%M:%S')}")
-
+    now = get_beijing_time()
+    curr_hm = now.hour * 100 + now.minute
+    
     if not is_within_trade_session():
-        print("⏰ 非交易时段，脚本静默。")
         sys.exit(0)
 
     curr, hi, lo, o = get_gold_full_data()
     if curr:
-        result = analyze_market(curr, hi, lo, o)
-        print(f"💰 当前价格: {curr} | 日内涨跌: {result['day_change']}%")
-        send_dual_alert(curr, hi, lo, result)
-    else:
-        print("📢 未能获取有效数据。")
-    print(f"{'='*30}")
+        res = analyze_market(curr, hi, lo, o)
+        
+        # --- 消息触发逻辑 ---
+        msg_mode = "ALERT" 
+        
+        # 1. 如果是收盘时间 (15:15 左右)
+        if 1510 <= curr_hm <= 1525:
+            msg_mode = "SUMMARY"
+        
+        # 2. 如果是整点快报 (每2小时一次: 10点, 12点, 14点, 22点, 0点)
+        # 逻辑：如果是整点后的前15分钟内（GitHub每15分运行一次），则触发快报
+        elif now.hour % 2 == 0 and now.minute < 15:
+            msg_mode = "PULSE"
+        
+        # 发送判断
+        send_dual_alert(curr, hi, lo, res, msg_mode=msg_mode)
+        print(f"[{now.strftime('%H:%M')}] 模式:{msg_mode} 现价:{curr}")
+
