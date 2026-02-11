@@ -1,0 +1,40 @@
+name: Gold Dual Monitor Bot
+
+on:
+  schedule:
+    # 核心交易时段监控（北京时间）：
+    # 1. 早盘 + 午盘：09:00 - 15:30 (UTC 01:00 - 07:30)
+    # 2. 夜盘：20:00 - 23:30 (UTC 12:00 - 15:30)
+    # 每 15 分钟执行一次
+    - cron: '*/15 1-7 * * 1-5'
+    - cron: '*/15 12-15 * * 1-5'
+  
+  # 允许手动触发测试
+  workflow_dispatch:
+
+jobs:
+  trading-monitor:
+    runs-on: ubuntu-latest
+    
+    # 设置时区，确保日志显示的是北京时间
+    env:
+      TZ: Asia/Shanghai
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v3
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.9'
+
+      - name: Install Dependencies
+        run: |
+          pip install requests
+
+      - name: Run Dual Monitor Script
+        env:
+          # 必须在 Repository Secrets 中配置好 PUSHPLUS_TOKEN
+          PUSHPLUS_TOKEN: ${{ secrets.PUSHPLUS_TOKEN }}
+        run: python gold_dual_monitor.py
