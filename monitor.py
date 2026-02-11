@@ -8,7 +8,7 @@ import os
 TARGET_RATE = 0.048
 
 # 2. PushPlus 群组编码 (刚才在后台填写的那个英文名)
-PUSH_TOPIC = "jpy_alert_vip" 
+PUSH_TOPIC = "jpy_monitor_vip" 
 
 # 3. 这里的 Token 从环境变量读取，不要修改
 # 只有你自己(管理员)的 Token 才有权限向群组发消息
@@ -79,3 +79,4 @@ if __name__ == "__main__":
         print("❌ 获取汇率失败，请检查网络或API。")
         
     print("--- 任务结束 ---")
+
